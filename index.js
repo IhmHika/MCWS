@@ -64,15 +64,15 @@ const commands = [
     new SlashCommandBuilder()
         .setName('channel')
         .setDescription('Configure sync channel')
-        .addStringOption(o => o.setName('action').setDescription('Select action').setRequired(true) 
+        .addStringOption(o => o.setName('action').setDescription('Select action').setRequired(true)
             .addChoices({ name: 'Set', value: 'set' }, { name: 'Remove', value: 'remove' })),
     new SlashCommandBuilder()
         .setName('memo')
         .setDescription('Coordinate memo management')
         .addSubcommand(sub => sub.setName('add').setDescription('Add a new memo')
-            .addStringOption(o => o.setName('title').setDescription('Memo title').setRequired(true)) 
-            .addStringOption(o => o.setName('coords').setDescription('x y z').setRequired(true)) 
-            .addStringOption(o => o.setName('dim').setDescription('Dimension').setRequired(true) 
+            .addStringOption(o => o.setName('title').setDescription('Memo title').setRequired(true))
+            .addStringOption(o => o.setName('coords').setDescription('x y z').setRequired(true))
+            .addStringOption(o => o.setName('dim').setDescription('Dimension').setRequired(true)
                 .addChoices({ name: 'Overworld', value: 'Overworld' }, { name: 'Nether', value: 'Nether' }, { name: 'The End', value: 'The End' })))
         .addSubcommand(sub => sub.setName('view').setDescription('View all memos'))
         .addSubcommand(sub => sub.setName('delete').setDescription('Delete a memo')
@@ -92,9 +92,9 @@ client.once('ready', async () => {
     console.log(`Log in: ${client.user.tag}`);
     const guildId = config.GUILD_ID || client.guilds.cache.first()?.id;
     const rest = new REST({ version: '10' }).setToken(TOKEN);
-    try { 
+    try {
         if (guildId) {
-            await rest.put(Routes.applicationGuildCommands(client.user.id, guildId), { body: commands }); 
+            await rest.put(Routes.applicationGuildCommands(client.user.id, guildId), { body: commands });
             console.log('Commands successfully reloaded.');
         }
     } catch (e) { console.error(e); }
@@ -111,9 +111,9 @@ function sendMCCommand(ws, command, requestId) {
 
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
-    
+
     if (interaction.commandName === 'ping') return await interaction.reply({ content: `Latency: ${client.ws.ping}ms`, ephemeral: true });
-    
+
     if (interaction.commandName === 'help') {
         const helpEmbed = new EmbedBuilder().setTitle("Command Reference").setColor(0x2b2d31)
             .addFields(
@@ -187,13 +187,13 @@ client.on('interactionCreate', async (interaction) => {
                         currentPlayers = newP; isInitialSync = false; updateStatus();
                         return;
                     }
-                    
+
                     let rawMsg = body.message || body.properties?.Message || "";
                     if (rawMsg.startsWith('{')) {
                         try {
                             const parsed = JSON.parse(rawMsg);
-                            if (parsed.rawtext) rawMsg = parsed.rawtext.map(i => i.text).join("");
-                        } catch (e) {}
+                            if (parsed.hasOwnProperty('rawtext')) return;
+                        } catch (e) { }
                     }
                     let cleanMsg = rawMsg.replace(/\u00A7./g, "").trim();
 
@@ -248,14 +248,14 @@ client.on('interactionCreate', async (interaction) => {
                 } catch (e) { }
             });
 
-            ws.on('close', () => { 
+            ws.on('close', () => {
                 const channel = client.channels.cache.get(config.CHANNEL_ID);
                 if (mcConnection) { mcConnection = null; updateStatus(); channel?.send({ embeds: [new EmbedBuilder().setTitle('Disconnected').setColor(0x992d22)] }); }
             });
         });
     }
     if (interaction.commandName === 'stop') { stopServer(); await interaction.reply({ embeds: [new EmbedBuilder().setTitle('Stopped').setColor(0x34495e)] }); }
-    
+
     if (interaction.commandName === 'list') {
         if (!mcConnection) return interaction.reply('Not connected');
         await interaction.deferReply();
@@ -311,5 +311,3 @@ client.on('messageCreate', (msg) => {
 });
 
 client.login(TOKEN);
-
-
