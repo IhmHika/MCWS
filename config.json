@@ -1,8 +1,11 @@
 {
-    "TOKEN": "botのtokenをここに",
-    "WSS_PORT": 19132,
-    "ADMIN_IDS": ["管理者用のディスコードユーザーIDをここに(信用できる人又は自分のIDにしましょう)"],
-    "CHANNEL_ID": "",
-    "CLIENT_ID": "",
-    "GUILD_ID": ""
+  "TOKEN": "botのtokenをここに",
+  "WSS_PORT": 19132,
+  "ADMIN_IDS": [
+    "管理者用のディスコードユーザーIDをここに(信用できる人又は自分のIDにしましょう)"
+  ],
+  "CHANNEL_ID": "",
+  "CLIENT_ID": "",
+  "GUILD_ID": "",
+  "MAX_MESSAGE_LENGTH": 150
 }

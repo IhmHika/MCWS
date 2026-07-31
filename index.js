@@ -20,6 +20,7 @@ const fs = require('fs');
 
 let config = JSON.parse(fs.readFileSync('./config.json', 'utf8'));
 const { TOKEN, WSS_PORT, ADMIN_IDS } = config;
+const MAX_MESSAGE_LENGTH = config.MAX_MESSAGE_LENGTH || 150;
 
 const client = new Client({
     intents: [
@@ -90,12 +91,15 @@ const commands = [
 
 client.once('ready', async () => {
     console.log(`Log in: ${client.user.tag}`);
-    const guildId = config.GUILD_ID || client.guilds.cache.first()?.id;
     const rest = new REST({ version: '10' }).setToken(TOKEN);
     try {
+        const guildId = config.GUILD_ID;
         if (guildId) {
             await rest.put(Routes.applicationGuildCommands(client.user.id, guildId), { body: commands });
-            console.log('Commands successfully reloaded.');
+            console.log(`Guild commands successfully reloaded for guild: ${guildId}`);
+        } else {
+            await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
+            console.log('Global commands successfully reloaded.');
         }
     } catch (e) { console.error(e); }
     updateStatus();
@@ -106,7 +110,14 @@ function updateStatus() {
 }
 
 function sendMCCommand(ws, command, requestId) {
-    if (ws.readyState === 1) ws.send(JSON.stringify({ header: { version: 1, requestId: requestId, messageType: "commandRequest", messagePurpose: "commandRequest" }, body: { commandLine: command, version: 1 } }));
+    if (ws && ws.readyState === 1) {
+        try {
+            ws.send(JSON.stringify({ header: { version: 1, requestId: requestId, messageType: "commandRequest", messagePurpose: "commandRequest" }, body: { commandLine: command, version: 1 } }));
+        } catch (e) {
+            console.error('Failed to send MC command:', e);
+            saveLog(`[ERROR] sendMCCommand failed: ${e.message}`);
+        }
+    }
 }
 
 client.on('interactionCreate', async (interaction) => {
@@ -200,8 +211,20 @@ client.on('interactionCreate', async (interaction) => {
                     if (!cleanMsg || cleanMsg.includes('[Discord]') || cleanMsg.startsWith('/')) return;
                     if (!isChatEvent && !isTextEvent) return;
                     if (/[\r\n]/.test(cleanMsg)) return;
+
                     const isJoin = cleanMsg.includes("joined the game") || cleanMsg.includes("Join:");
                     const isLeft = cleanMsg.includes("left the game") || cleanMsg.includes("Left:");
+
+                    const typeVal = body.type ?? body.properties?.Type ?? body.properties?.type;
+                    const msgType = String(typeVal).toLowerCase();
+
+                    const isBracketChat = /^<(.+?)>\s+(.+)$/.test(cleanMsg) || /^<(.+?)>\s*\(チャット\)\s*(.+)$/.test(cleanMsg);
+                    const isChatStr = ['1', 'chat'].includes(msgType);
+
+                    if (!isChatStr && !isBracketChat && !isJoin && !isLeft) {
+                        return;
+                    }
+
                     if (isJoin || isLeft) {
                         const embed = new EmbedBuilder().setDescription(`**${cleanMsg}**`).setColor(isJoin ? 0x57F287 : 0xED4245);
                         channel?.send({ embeds: [embed] });
@@ -222,7 +245,6 @@ client.on('interactionCreate', async (interaction) => {
                         }
                     }
 
-                    // Fallback for normal chat events where sender/message are separated in the payload.
                     if ((!sender || !content) && (isChatEvent || isTextEvent)) {
                         const bodySender = (body.sender || body.properties?.Sender || "").trim();
                         const bodyMessage = (body.message || body.properties?.Message || "").trim();
@@ -235,7 +257,7 @@ client.on('interactionCreate', async (interaction) => {
                         }
                     }
 
-                    if (!sender || !content) return;
+                    if (!sender || !content || content.startsWith('/')) return;
 
                     const cacheKey = `${sender}:${content}`;
                     if (messageCache.has(cacheKey)) return;
@@ -304,10 +326,31 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-client.on('messageCreate', (msg) => {
+client.on('messageCreate', async (msg) => {
     if (msg.author.bot || msg.channel.id !== config.CHANNEL_ID || !mcConnection || msg.content.startsWith('/')) return;
+    if (msg.content.length > MAX_MESSAGE_LENGTH) {
+        try {
+            await msg.reply(`⚠️ メッセージが長すぎるため、マイクラ内に送信できませんでした。（上限: ${MAX_MESSAGE_LENGTH}文字 / 送信: ${msg.content.length}文字）`);
+        } catch (e) {
+            console.error('Failed to send length warning to Discord:', e);
+        }
+        saveLog(`[DISCORD] [長文警告スキップ (${msg.content.length}文字)] <${msg.author.username}>`);
+        return;
+    }
+
+    const sanitizedContent = msg.content
+        .replace(/[\r\n]+/g, ' ')
+        .replace(/\\/g, '\\\\')
+        .replace(/"/g, '\\"');
+
     saveLog(`[DISCORD] <${msg.author.username}> ${msg.content}`);
-    mcConnection.send(JSON.stringify({ header: { version: 1, requestId: crypto.randomUUID(), messageType: "commandRequest", messagePurpose: "commandRequest" }, body: { commandLine: `tellraw @a {"rawtext":[{"text":"§b[Discord] §r<${msg.author.username}> ${msg.content}"}]}`, version: 1 } }));
+
+    try {
+        sendMCCommand(mcConnection, `tellraw @a {"rawtext":[{"text":"§b[Discord] §r<${msg.author.username}> ${sanitizedContent}"}]}`, crypto.randomUUID());
+    } catch (e) {
+        console.error('Error processing messageCreate:', e);
+        saveLog(`[ERROR] messageCreate error: ${e.message}`);
+    }
 });
 
 client.login(TOKEN);
